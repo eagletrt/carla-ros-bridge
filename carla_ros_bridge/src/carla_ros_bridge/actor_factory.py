@@ -25,6 +25,7 @@ from carla_ros_bridge.actor_control import ActorControl
 from carla_ros_bridge.actor_list_sensor import ActorListSensor
 from carla_ros_bridge.camera import Camera, RgbCamera, DepthCamera, SemanticSegmentationCamera, DVSCamera
 from carla_ros_bridge.collision_sensor import CollisionSensor
+from carla_ros_bridge.cone_ground_truth_sensor import ConeGroundTruthSensor
 from carla_ros_bridge.ego_vehicle import EgoVehicle
 from carla_ros_bridge.gnss import Gnss
 from carla_ros_bridge.imu import ImuSensor
@@ -322,6 +323,15 @@ class ActorFactory(object):
 
         elif type_id == ObjectSensor.get_blueprint_name():
             actor = ObjectSensor(
+                uid=uid,
+                name=name,
+                parent=parent,
+                node=self.node,
+                actor_list=self.actors,
+            )
+
+        elif type_id == ConeGroundTruthSensor.get_blueprint_name():
+            actor = ConeGroundTruthSensor(
                 uid=uid,
                 name=name,
                 parent=parent,
