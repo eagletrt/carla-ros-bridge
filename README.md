@@ -2,6 +2,41 @@
 
 This ROS package is a modified fork of the [carla-simulator/ros-bridge](https://github.com/carla-simulator/ros-bridge) package that is adopted to work with ROS2 Humble running on Ubuntu 22.04 LTS with Scenario Runner v0.9.15. The ROS bridge enables two-way communication between ROS and CARLA. The information from the CARLA server is translated to ROS topics. In the same way, the messages sent between nodes in ROS get translated to commands to be applied in CARLA.
 
+## eagletrt additions
+
+On top of upstream, this fork adds what the perception stack needs for evaluation
+(see the [perception workspace README](https://github.com/eagletrt/perception-ws-sw)).
+
+**World frame.** The CARLA world TF frame is the `world_frame` parameter, default
+`carla_world` (upstream hardcodes `map`). `map` is reserved for the perception
+stack's own world, so the two never clash.
+
+**Ground truth pseudo-sensors**, spawned with `ros2 run carla_ros_bridge spawn_ground_truth`
+once the bridge and the ego vehicle are up:
+
+| Blueprint | Publishes |
+|---|---|
+| `sensor.pseudo.ground_truth` (attached to the ego vehicle) | `/ground_truth/odometry` (`nav_msgs/Odometry`, `carla_world` → `gt/base_link`), TF `carla_world → gt/base_link`, static TF `gt/base_link → <role name>` |
+| `sensor.pseudo.cone_ground_truth` | `/ground_truth/cone_map` (`perception_interfaces/ConeArray` in `carla_world`; red cones = `BIG_ORANGE`) |
+
+`gt/base_link` is the CARLA vehicle origin.
+
+**Anchoring the perception map.** The ground truth sensor listens to
+`/perception/status`. When a perception stack reports that its map started at
+time t (`map_origin_stamp`), the sensor looks up the vehicle's ground truth pose at
+t (from a 120 s history, interpolated) and publishes it as static TF
+`carla_world → map`. A new `map_id` re-anchors. The perception stack itself never
+sees ground truth.
+
+**Notes**
+- Do not spawn `sensor.pseudo.tf` next to the ground truth sensor: both would give
+  the vehicle frame a parent.
+- In passive mode the bridge publishes sensor TF directly from `carla_world`
+  instead of from the vehicle frame; check that `<role name> → <role name>/<camera>`
+  resolves for the perception stack's camera mount lookup.
+- `lap_monitor`, `record_evaluation` and `evaluate_run` still use the previous
+  topics (`/carla/autopilot/...`, `/slam/*`) and are due to be rewritten.
+
 ## Main Requirements
 
 - OS: Ubuntu 22.04 LTS

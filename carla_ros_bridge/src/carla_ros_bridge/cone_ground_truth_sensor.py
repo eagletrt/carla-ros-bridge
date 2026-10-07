@@ -12,25 +12,28 @@ handle a cone ground truth sensor
 from carla_ros_bridge.actor import Actor
 from carla_ros_bridge.pseudo_actor import PseudoActor
 
-from carla_msgs.msg import CarlaGroundTruthCone, CarlaGroundTruthConeArray
+from perception_interfaces.msg import Cone, ConeArray
 
-# CARLA blueprint id (lowercase, no separators) -> ground truth color enum.
+CONE_MAP_TOPIC = "/ground_truth/cone_map"
+
+# CARLA blueprint id (lowercase, no separators) -> perception_interfaces color enum.
 # Static cone props are never reclassified at runtime, so a fixed lookup is enough.
+# The red cone prop stands in for the FS big orange cone.
 _CONE_COLOR_BY_BLUEPRINT = {
-    "staticpropbluecone": CarlaGroundTruthCone.BLUE,
-    "staticpropblue_cone": CarlaGroundTruthCone.BLUE,
-    "staticpropyellowcone": CarlaGroundTruthCone.YELLOW,
-    "staticpropyellow_cone": CarlaGroundTruthCone.YELLOW,
-    "staticproporangecone": CarlaGroundTruthCone.ORANGE,
-    "staticproporange_cone": CarlaGroundTruthCone.ORANGE,
-    "staticpropredcone": CarlaGroundTruthCone.RED,
-    "staticpropred_cone": CarlaGroundTruthCone.RED,
+    "staticpropbluecone": Cone.BLUE,
+    "staticpropblue_cone": Cone.BLUE,
+    "staticpropyellowcone": Cone.YELLOW,
+    "staticpropyellow_cone": Cone.YELLOW,
+    "staticproporangecone": Cone.ORANGE,
+    "staticproporange_cone": Cone.ORANGE,
+    "staticpropredcone": Cone.BIG_ORANGE,
+    "staticpropred_cone": Cone.BIG_ORANGE,
 }
 
 
 def _cone_color(type_id):
     key = type_id.replace(".", "").replace("-", "").lower()
-    return _CONE_COLOR_BY_BLUEPRINT.get(key, CarlaGroundTruthCone.UNKNOWN)
+    return _CONE_COLOR_BY_BLUEPRINT.get(key, Cone.UNKNOWN)
 
 
 class ConeGroundTruthSensor(PseudoActor):
@@ -39,6 +42,9 @@ class ConeGroundTruthSensor(PseudoActor):
     Pseudo sensor exposing the exact world-frame position of every spawned
     track cone, bypassing perception entirely. Cones are static props (not
     Vehicle/Walker), so they are invisible to sensor.pseudo.objects.
+
+    Publishes a perception_interfaces/ConeArray on /ground_truth/cone_map,
+    expressed in the CARLA world frame (world_frame parameter).
     """
 
     def __init__(self, uid, name, parent, node, actor_list):
@@ -61,8 +67,8 @@ class ConeGroundTruthSensor(PseudoActor):
                                                      parent=parent,
                                                      node=node)
         self.actor_list = actor_list
-        self.cone_publisher = node.new_publisher(CarlaGroundTruthConeArray,
-                                                 self.get_topic_prefix(),
+        self.cone_publisher = node.new_publisher(ConeArray,
+                                                 CONE_MAP_TOPIC,
                                                  qos_profile=10)
 
     def destroy(self):
@@ -85,11 +91,12 @@ class ConeGroundTruthSensor(PseudoActor):
     def update(self, frame, timestamp):
         """
         Function (override) to update this object.
-        Publishes the world-frame (map) position of every known cone actor.
+        Publishes the world-frame position of every known cone actor.
         :return:
         """
-        ros_cones = CarlaGroundTruthConeArray()
-        ros_cones.header = self.get_msg_header(frame_id="map", timestamp=timestamp)
+        ros_cones = ConeArray()
+        ros_cones.header = self.get_msg_header(frame_id=self.node.parameters['world_frame'],
+                                               timestamp=timestamp)
 
         for actor in self.actor_list.values():
             if not isinstance(actor, Actor):
@@ -98,13 +105,11 @@ class ConeGroundTruthSensor(PseudoActor):
             if "cone" not in type_id:
                 continue
 
-            position = actor.get_current_ros_pose().position
-            cone = CarlaGroundTruthCone()
+            cone = Cone()
             cone.id = actor.get_id()
-            cone.x = position.x
-            cone.y = position.y
-            cone.z = position.z
+            cone.position = actor.get_current_ros_pose().position
             cone.color = _cone_color(type_id)
+            cone.confidence = 1.0
             ros_cones.cones.append(cone)
 
         self.cone_publisher.publish(ros_cones)

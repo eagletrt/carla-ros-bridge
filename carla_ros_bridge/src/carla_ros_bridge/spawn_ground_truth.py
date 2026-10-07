@@ -7,7 +7,7 @@
 #
 """
 One-shot helper that requests the ground-truth pseudo-sensors this project
-needs (ego odometry + track cone positions) from the running carla_ros_bridge,
+needs (ego pose + track cone positions) from the running carla_ros_bridge,
 via its /carla/spawn_object service.
 
 These pseudo-sensors are not part of objects.json and are not spawned by
@@ -73,7 +73,9 @@ class SpawnGroundTruth(CompatibleNode):
 
     def run(self):
         ego_vehicle_id = _find_ego_vehicle_id(self)
-        self.loginfo("Attaching ground truth odometry to vehicle id={}".format(ego_vehicle_id))
+        self.loginfo("Attaching ground truth sensors to vehicle id={}".format(ego_vehicle_id))
+        self._spawn("sensor.pseudo.ground_truth", "ground_truth", attach_to=ego_vehicle_id)
+        # Legacy odometry topic, still read by lap_monitor.
         self._spawn("sensor.pseudo.odom", "ground_truth_odom", attach_to=ego_vehicle_id)
         self._spawn("sensor.pseudo.cone_ground_truth", "cone_ground_truth", attach_to=0)
 

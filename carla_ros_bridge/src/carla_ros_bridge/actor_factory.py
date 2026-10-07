@@ -28,6 +28,7 @@ from carla_ros_bridge.collision_sensor import CollisionSensor
 from carla_ros_bridge.cone_ground_truth_sensor import ConeGroundTruthSensor
 from carla_ros_bridge.ego_vehicle import EgoVehicle
 from carla_ros_bridge.gnss import Gnss
+from carla_ros_bridge.ground_truth_sensor import GroundTruthSensor
 from carla_ros_bridge.imu import ImuSensor
 from carla_ros_bridge.lane_invasion_sensor import LaneInvasionSensor
 from carla_ros_bridge.lidar import Lidar, SemanticLidar
@@ -299,6 +300,12 @@ class ActorFactory(object):
                                    name=name,
                                    parent=parent,
                                    node=self.node)
+
+        elif type_id == GroundTruthSensor.get_blueprint_name():
+            actor = GroundTruthSensor(uid=uid,
+                                      name=name,
+                                      parent=parent,
+                                      node=self.node)
 
         elif type_id == SpeedometerSensor.get_blueprint_name():
             actor = SpeedometerSensor(uid=uid,
