@@ -36,6 +36,7 @@ elif ROS_VERSION == 2:
             'console_scripts': [
                 'bridge = carla_ros_bridge.bridge:main',
                 'spawn_ground_truth = carla_ros_bridge.spawn_ground_truth:main',
+                'spawn_rgb_lidar = carla_ros_bridge.spawn_rgb_lidar:main',
                 'lap_monitor = carla_ros_bridge.lap_monitor:main',
                 'record_evaluation = carla_ros_bridge.record_evaluation:main',
                 'evaluate_run = carla_ros_bridge.evaluate_run:main',
