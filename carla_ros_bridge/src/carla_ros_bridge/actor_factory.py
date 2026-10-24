@@ -48,6 +48,7 @@ from carla_ros_bridge.traffic import Traffic, TrafficLight
 from carla_ros_bridge.traffic_lights_sensor import TrafficLightsSensor
 from carla_ros_bridge.vehicle import Vehicle
 from carla_ros_bridge.walker import Walker
+from carla_ros_bridge.ouster_lidar import OUSTER_ROLE_PREFIX, OusterLidar
 
 # to generate a random spawning position or vehicles
 import random
@@ -420,8 +421,12 @@ class ActorFactory(object):
                                    carla_actor, self.sync_mode)
             elif carla_actor.type_id.startswith("sensor.lidar"):
                 if carla_actor.type_id.endswith("sensor.lidar.ray_cast"):
-                    actor = Lidar(uid, name, parent, spawn_pose, self.node,
-                                  carla_actor, self.sync_mode)
+                    if name.startswith(OUSTER_ROLE_PREFIX):
+                        actor = OusterLidar(uid, name, parent, spawn_pose, self.node,
+                                            carla_actor, self.sync_mode)
+                    else:
+                        actor = Lidar(uid, name, parent, spawn_pose, self.node,
+                                      carla_actor, self.sync_mode)
                 elif carla_actor.type_id.endswith(
                         "sensor.lidar.ray_cast_semantic"):
                     actor = SemanticLidar(uid, name, parent, spawn_pose,
