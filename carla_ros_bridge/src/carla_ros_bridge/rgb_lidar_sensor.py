@@ -22,6 +22,9 @@ from sensor_msgs.msg import PointCloud2, PointField
 LIDAR_ROLE = "rgb_lidar"
 CAMERA_ROLE_PREFIX = "rgb_lidar_cam"
 UNCOLORED = np.array([255, 0, 255], np.uint8)
+# incomplete frames kept while the rest of the rig arrives (camera data lags the LiDAR by ~2 ticks):
+# a rig whose sensors never capture on the same frame would otherwise buffer images without bound
+MAX_PENDING_FRAMES = 8
 
 FIELDS = [
     PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
@@ -71,6 +74,8 @@ class RgbLidarSensor(PseudoActor):
     stamped at its last slice. The points of each slice stay in the LiDAR frame
     of that slice, as with a real rotating LiDAR. TF world_frame -> LiDAR frame
     is the pose at the last slice.
+    With sensor_tick > 0 the rig must share it and the LiDAR must do a whole turn
+    per tick: each capture is then a full turn.
     """
 
     def __init__(self, uid, name, parent, node):
@@ -103,10 +108,23 @@ class RgbLidarSensor(PseudoActor):
         self.lidar = lidars[0]
 
         dt = world.get_settings().fixed_delta_seconds
-        self.ticks_per_scan = round(1.0 / (float(self.lidar.attributes["rotation_frequency"]) * dt))
+        if not dt:
+            raise RuntimeError("{}: needs a fixed_delta_seconds".format(name))
+        ticks = 1.0 / (float(self.lidar.attributes["rotation_frequency"]) * dt)
+        self.ticks_per_scan = round(ticks)
+        if self.ticks_per_scan < 1 or abs(ticks - self.ticks_per_scan) > 1e-6:
+            raise RuntimeError("{}: 1 / (rotation_frequency * fixed_delta_seconds) = {:.3f} must be a positive "
+                               "integer".format(name, ticks))
+        sensor_ticks = {float(a.attributes["sensor_tick"]) for a in [self.lidar] + self.cameras}
+        if len(sensor_ticks) > 1:
+            raise RuntimeError("{}: the rig sensors must share sensor_tick, got {}".format(name, sorted(sensor_ticks)))
+        if sensor_ticks != {0.0} and self.ticks_per_scan != 1:
+            raise RuntimeError("{}: with sensor_tick > 0 the LiDAR must turn once per tick "
+                               "(rotation_frequency = 1 / fixed_delta_seconds)".format(name))
 
         self._lock = Lock()
         self._frames = {}       # frame -> {role_name: carla sensor data}
+        self._overflow_drops = 0  # incomplete frames dropped by MAX_PENDING_FRAMES
         self._first_frame = None
         self._scan = []         # (points, intensity, rgb) of the slices of the current turn
         self._scan_id = None
@@ -144,6 +162,13 @@ class RgbLidarSensor(PseudoActor):
             frame = self._frames.setdefault(data.frame, {})
             frame[role] = data
             if len(frame) < 1 + len(self.cameras):
+                if len(self._frames) > MAX_PENDING_FRAMES:
+                    del self._frames[min(self._frames)]
+                    self._overflow_drops += 1
+                    if self._overflow_drops % 100 == 1:
+                        self.node.logwarn("{}: frames are not completed by the LiDAR and every camera, {} dropped: "
+                                          "do the rig sensors capture on the same frames?".format(
+                                              self.name, self._overflow_drops))
                 return
             stale = [f for f in self._frames if f < data.frame]
             if stale:

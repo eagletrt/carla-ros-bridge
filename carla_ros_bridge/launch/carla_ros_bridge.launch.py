@@ -68,6 +68,9 @@ def generate_launch_description():
             output='screen',
             emulate_tty='True',
             on_exit=launch.actions.Shutdown(),
+            # numpy's OpenBLAS would spin one thread per core on the tiny matrix products of the RGB LiDAR fusion:
+            # ~10x the CPU and slower than a single thread
+            additional_env={'OPENBLAS_NUM_THREADS': '1'},
             parameters=[
                 {
                     'use_sim_time': True
