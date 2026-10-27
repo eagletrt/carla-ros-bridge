@@ -61,6 +61,7 @@ class CarlaRosBridge(CompatibleNode):
         :type params: dict
         """
         super(CarlaRosBridge, self).__init__("ros_bridge_node")
+        self._initialized = False  # set by initialize_bridge(), which runs only once connected to CARLA
 
     # pylint: disable=attribute-defined-outside-init
     def initialize_bridge(self, carla_world, params):
@@ -159,6 +160,7 @@ class CarlaRosBridge(CompatibleNode):
         self.carla_weather_subscriber = \
             self.new_subscription(CarlaWeatherParameters, "/carla/weather_control",
                                   self.on_weather_changed, qos_profile=10, callback_group=self.callback_group)
+        self._initialized = True
 
     def spawn_object(self, req, response=None):
         response = roscomp.get_service_response(SpawnObject)
@@ -346,6 +348,11 @@ class CarlaRosBridge(CompatibleNode):
         :return:
         """
         self.loginfo("Shutting down...")
+        if not self._initialized:  # e.g. CARLA unreachable: none of the objects released below exists
+            if hasattr(self, "shutdown"):
+                self.shutdown.set()  # stops the update thread, if initialize_bridge() failed after starting it
+            super(CarlaRosBridge, self).destroy()
+            return
         self.shutdown.set()
         if not self.sync_mode:
             if self.on_tick_id:
@@ -380,6 +387,7 @@ def main(args=None):
     carla_client = None
     executor = None
     parameters = {}
+    failed = False
 
     executor = roscomp.executors.MultiThreadedExecutor()
     carla_bridge = CarlaRosBridge()
@@ -448,12 +456,15 @@ def main(args=None):
 
     except (IOError, RuntimeError) as e:
         carla_bridge.logerr("Error: {}".format(e))
+        failed = True
     except KeyboardInterrupt:
         pass
     finally:
         roscomp.shutdown()
         del carla_world
         del carla_client
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

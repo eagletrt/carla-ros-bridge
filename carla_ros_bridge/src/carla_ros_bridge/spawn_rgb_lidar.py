@@ -7,7 +7,8 @@
 One-shot helper that requests sensor.pseudo.rgb_lidar from the running
 carla_ros_bridge, via its /carla/spawn_object service, attached to the vehicle
 carrying the rgb_lidar LiDAR. Run it once after the bridge is up and the vehicle
-with its RGB LiDAR rig is spawned.
+with its RGB LiDAR rig is spawned. The CARLA server is read from the parameters
+host, port and timeout, as for the bridge.
 """
 
 import sys
@@ -20,18 +21,14 @@ from geometry_msgs.msg import Pose
 
 from carla_ros_bridge.rgb_lidar_sensor import LIDAR_ROLE, RgbLidarSensor
 
-CARLA_HOST = "localhost"
-CARLA_PORT = 2000
-CARLA_TIMEOUT_S = 5.0
 
-
-def _find_rig_vehicle_id():
+def _find_rig_vehicle_id(host, port, timeout):
     """Id of the vehicle the rgb_lidar LiDAR is attached to."""
-    client = carla.Client(CARLA_HOST, CARLA_PORT)
-    client.set_timeout(CARLA_TIMEOUT_S)
+    client = carla.Client(host, port)
+    client.set_timeout(timeout)
     world = client.get_world()
     # in synchronous mode the actor registry is filled only after a tick is observed
-    world.wait_for_tick(seconds=CARLA_TIMEOUT_S)
+    world.wait_for_tick(seconds=timeout)
     lidars = [a for a in world.get_actors().filter("sensor.lidar.ray_cast")
               if a.attributes.get("role_name") == LIDAR_ROLE and a.parent is not None]
     if not lidars:
@@ -46,7 +43,8 @@ class SpawnRgbLidar(CompatibleNode):
         self.spawn_object_client = self.new_client(SpawnObject, "/carla/spawn_object")
 
     def run(self):
-        vehicle_id = _find_rig_vehicle_id()
+        vehicle_id = _find_rig_vehicle_id(self.get_param('host', 'localhost'), self.get_param('port', 2000),
+                                          float(self.get_param('timeout', 5.0)))
         request = roscomp.get_service_request(SpawnObject)
         request.type = RgbLidarSensor.get_blueprint_name()
         request.id = LIDAR_ROLE
