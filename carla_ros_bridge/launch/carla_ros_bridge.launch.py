@@ -1,8 +1,12 @@
+import os
+
 import launch
 import launch_ros.actions
+from ament_index_python.packages import get_package_share_directory
 
 
 def generate_launch_description():
+    fastdds_profile = launch.substitutions.LaunchConfiguration('fastdds_profile')
     ld = launch.LaunchDescription([
         launch.actions.DeclareLaunchArgument(
             name='host',
@@ -61,6 +65,19 @@ def generate_launch_description():
             default_value='carla_world',
             description='TF frame of the CARLA world. Kept distinct from "map", which belongs to the perception stack'
         ),
+        launch.actions.DeclareLaunchArgument(
+            name='fastdds_profile',
+            default_value=os.path.join(get_package_share_directory('carla_ros_bridge'), 'config',
+                                       'fastdds_large_data.xml'),
+            description='Fast DDS profile of the bridge (empty = Fast DDS defaults). The default one carries '
+                        'the ~4.5 MB RGB LiDAR turns in shared memory: subscribers should load it too'
+        ),
+        # set only when given: an empty FASTRTPS_DEFAULT_PROFILES_FILE makes Fast DDS log an XML error
+        launch.actions.SetEnvironmentVariable(
+            'FASTRTPS_DEFAULT_PROFILES_FILE', fastdds_profile,
+            condition=launch.conditions.IfCondition(
+                launch.substitutions.PythonExpression(["'", fastdds_profile, "' != ''"]))
+        ),
         launch_ros.actions.Node(
             package='carla_ros_bridge',
             executable='bridge',
@@ -68,6 +85,9 @@ def generate_launch_description():
             output='screen',
             emulate_tty='True',
             on_exit=launch.actions.Shutdown(),
+            # numpy's OpenBLAS would spin one thread per core on the tiny matrix products of the RGB LiDAR fusion:
+            # ~10x the CPU and slower than a single thread
+            additional_env={'OPENBLAS_NUM_THREADS': '1'},
             parameters=[
                 {
                     'use_sim_time': True

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fast DDS profile for the RGB LiDAR cloud (~4.5 MB per message at 10 Hz) between processes of the same host.
+  What matters is the publisher (the bridge): subscribers with the default transports, which include
+  shared memory, get whole clouds from it. To load it in a process:
+    export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix carla_ros_bridge)/share/carla_ros_bridge/config/fastdds_large_data.xml
+  carla_ros_bridge.launch.py loads it in the bridge by default (argument fastdds_profile),
+  pointcloud_monitor.launch.py in every process it starts.
+
+  With the default transports (UDPv4 + 512 KB shared memory segments) each cloud travels as ~64 KB
+  fragments: under CPU load a reader misses some, and as a reliable reader delivers in order, it holds
+  every following cloud until the repair (bursts of clouds up to ~1 s late). Here the shared memory
+  segment holds whole clouds, so they are not fragmented.
+  Shared memory only: processes of other hosts or containers without a shared /dev/shm are not reached.
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>shm_large_data</transport_id>
+      <type>SHM</type>
+      <!-- room for ~14 clouds in flight; /dev/shm is a tmpfs, pages are used only when written -->
+      <segment_size>67108864</segment_size>
+      <maxMessageSize>16777216</maxMessageSize>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="shm_large_data" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>shm_large_data</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

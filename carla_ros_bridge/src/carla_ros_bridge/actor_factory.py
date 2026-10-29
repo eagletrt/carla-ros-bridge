@@ -38,6 +38,7 @@ from carla_ros_bridge.odom_sensor import OdometrySensor
 from carla_ros_bridge.opendrive_sensor import OpenDriveSensor
 from carla_ros_bridge.pseudo_actor import PseudoActor
 from carla_ros_bridge.radar import Radar
+from carla_ros_bridge.rgb_lidar_sensor import LIDAR_ROLE, RgbLidarSensor
 from carla_ros_bridge.rss_sensor import RssSensor
 from carla_ros_bridge.sensor import Sensor
 from carla_ros_bridge.spectator import Spectator
@@ -112,6 +113,10 @@ class ActorFactory(object):
         self.lock.acquire()
         for actor_id in spawned_actors:
             carla_actor = self.world.get_actor(actor_id)
+            # the RGB LiDAR rig (rgb_lidar, rgb_lidar_cam_*) is read only by sensor.pseudo.rgb_lidar
+            if isinstance(carla_actor, carla.Sensor) and \
+                    carla_actor.attributes.get("role_name", "").startswith(LIDAR_ROLE):
+                continue
             if self.node.parameters["register_all_sensors"] or not isinstance(carla_actor, carla.Sensor):
                 self._create_object_from_actor(carla_actor)
 
@@ -129,7 +134,10 @@ class ActorFactory(object):
                     carla_actor = self.world.get_actor(actor_id)
                     self._create_object_from_actor(carla_actor, req)
                 elif task_type == ActorFactory.TaskType.SPAWN_PSEUDO_ACTOR and not self.node.shutdown.is_set():
-                    self._create_object(actor_id, req.type, req.id, req.attach_to, req.transform)
+                    try:
+                        self._create_object(actor_id, req.type, req.id, req.attach_to, req.transform)
+                    except RuntimeError as e:  # would otherwise leave self.lock acquired
+                        self.node.logerr("Spawning {} failed: {}".format(req.type, e))
                 elif task_type == ActorFactory.TaskType.DESTROY_ACTOR:
                     self._destroy_object(actor_id, delete_actor=True)
 
@@ -263,6 +271,9 @@ class ActorFactory(object):
         if actor_id not in self.actors:
             return
         actor = self.actors[actor_id]
+        # pseudo sensors attached to it go with it (CARLA children are destroyed by their own event)
+        for child in [a for a in self.actors.values() if a.parent is actor and not isinstance(a, Actor)]:
+            self._destroy_object(child.uid, delete_actor=False)
         del self.actors[actor_id]
         carla_actor = None
         if isinstance(actor, Actor):
@@ -345,6 +356,12 @@ class ActorFactory(object):
                 node=self.node,
                 actor_list=self.actors,
             )
+
+        elif type_id == RgbLidarSensor.get_blueprint_name():
+            actor = RgbLidarSensor(uid=uid,
+                                   name=name,
+                                   parent=parent,
+                                   node=self.node)
 
         elif type_id == TrafficLightsSensor.get_blueprint_name():
             actor = TrafficLightsSensor(
